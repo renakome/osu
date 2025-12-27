@@ -1,0 +1,112 @@
+name: Build Android (signed debug) and Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Setup .NET (ajuste a versão se necessário)
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Install .NET Android workload
+      run: |
+        dotnet workload install android --include-previews || true
+        dotnet workload restore || true
+
+    - name: Restore
+      run: dotnet restore osu.Android.slnf
+
+    - name: Build Release (Android)
+      run: |
+        dotnet build osu.Android.slnf -c Release -f:net8.0-android -v minimal
+
+    - name: Find produced APK(s)
+      id: find_apks
+      run: |
+        set -e
+        # procura apk(s) na pasta bin/Release (ajuste o padrão se necessário)
+        apks=$(find . -type f -path "*/bin/Release/*/*.apk" -o -path "*/bin/Release/**/*.apk" || true)
+        if [ -z "$apks" ]; then
+          echo "No APKs found in bin/Release. Listing tree for debug:"
+          ls -R || true
+          exit 1
+        fi
+        echo "$apks"
+        # escreve no output para uso posterior
+        echo "apk_files<<EOF" >> $GITHUB_OUTPUT
+        echo "$apks" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Prepare debug keystore
+      run: |
+        # Se você definiu a secret DEBUG_KEYSTORE_BASE64, usa ela (recomendado para manter a mesma chave).
+        if [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+          echo "Using provided DEBUG_KEYSTORE_BASE64 secret..."
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
+        else
+          echo "No DEBUG_KEYSTORE_BASE64 secret found — generating debug.keystore on-the-fly..."
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -storepass android -keypass android \
+            -alias androiddebugkey \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA -keysize 2048 -validity 10000
+        fi
+        ls -lah debug.keystore
+
+    - name: Download uber-apk-signer
+      run: |
+        wget -q https://github.com/patrickfav/uber-apk-signer/releases/download/v1.2.1/uber-apk-signer-1.2.1.jar -O uber-apk-signer.jar
+        java -version
+
+    - name: Sign APK(s) with debug keystore
+      run: |
+        IFS=$'\n'
+        for apk in ${{ steps.find_apks.outputs.apk_files }}; do
+          echo "Signing: $apk"
+          java -jar uber-apk-signer.jar --apks "$apk" \
+            --ks debug.keystore --ks-key-alias androiddebugkey \
+            --ks-pass pass:android --key-pass pass:android \
+            --allowResign
+        done
+
+    - name: Collect signed APKs
+      id: collect_signed
+      run: |
+        signed=$(find . -type f -name "*aligned.apk" -o -path "*/signed/*.apk" || true)
+        if [ -z "$signed" ]; then
+          echo "No signed APKs found. Listing files for debug:"
+          ls -R || true
+          exit 1
+        fi
+        echo "$signed"
+        echo "signed_apks<<EOF" >> $GITHUB_OUTPUT
+        echo "$signed" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release and upload signed APK(s)
+      uses: ncipollo/release-action@v1
+      with:
+        tag: android-build-${{ github.run_number }}-r${{ github.run_id }}
+        name: Android build ${{ github.run_number }} (run ${{ github.run_id }})
+        body: Automated Android build (signed debug) from Actions.
+        draft: false
+        prerelease: true
+        # O campo files aceita globs. Ajuste se quiser outro padrão.
+        files: |
+          **/signed/*.apk
+          **/*aligned.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
