@@ -67,7 +67,7 @@ namespace osu.Game.Rulesets.Osu.UI
             return base.OnTouchDown(e);
         }
 
-        protected override bool OnTouchMove(TouchMoveEvent e)
+        protected override void OnTouchMove(TouchMoveEvent e)  // ← Changed from bool to void
         {
             // Update positions for the tracked touches.
             if (firstSource != null && e.Touch.Source == firstSource)
@@ -79,32 +79,27 @@ namespace osu.Game.Rulesets.Osu.UI
             if (isPinching)
             {
                 updatePinch();
-                return true; // consume movement while pinching
+                return; // ← Changed from "return true;" to just "return;"
             }
 
-            return base.OnTouchMove(e);
+            base.OnTouchMove(e);  // ← Changed from "return base.OnTouchMove(e);" to just call base
         }
 
-        protected override bool OnTouchUp(TouchUpEvent e)
+        protected override void OnTouchUp(TouchUpEvent e)  // ← Changed from bool to void
         {
-            var consumed = false;
-
             if (e.Touch.Source == firstSource)
             {
                 firstSource = null;
-                consumed = isPinching;
             }
             else if (e.Touch.Source == secondSource)
             {
                 secondSource = null;
-                consumed = isPinching;
             }
 
             if (firstSource == null || secondSource == null)
                 stopPinch();
 
-            // If we were pinching, consume the up event too to avoid it registering as a tap.
-            return consumed || base.OnTouchUp(e);
+            base.OnTouchUp(e);  // ← Changed from "return consumed || base.OnTouchUp(e);" to just call base
         }
 
         private bool isPinching => firstSource != null && secondSource != null && initialDistance > 0;
@@ -149,7 +144,6 @@ namespace osu.Game.Rulesets.Osu.UI
             Vector2 worldDelta = worldBefore - worldAfter;
 
             // Shift container to compensate so focal point stays visually stable.
-            // Note: worldDelta is in gamefield units already (Playfield.ScreenSpaceToGamefield returns that).
             if (playfieldAdjustmentContainer != null)
                 playfieldAdjustmentContainer.Position += worldDelta;
             else if (playfield != null)
@@ -159,7 +153,6 @@ namespace osu.Game.Rulesets.Osu.UI
         private void stopPinch()
         {
             initialDistance = 0;
-            // nothing more to do for now; transforms remain at last applied scale/pos.
         }
     }
 }
