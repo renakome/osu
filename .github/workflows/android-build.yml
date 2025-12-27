@@ -30,7 +30,7 @@ jobs:
 
     - name: Build Release (Android)
       run: |
-        dotnet build osu.Android.slnf -c Release -f:net8.0-android -v minimal
+        dotnet build osu.Android.slnf -c Release -v minimal
 
     - name: Find produced APK(s)
       id: find_apks
