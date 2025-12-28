@@ -5,6 +5,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Input.Events;
 using osu.Game.Rulesets.UI;
 using osuTK;
+using TouchSource = osu.Framework.Input.TouchSource;
 
 namespace osu.Game.Rulesets.Osu.UI
 {
@@ -15,8 +16,8 @@ namespace osu.Game.Rulesets.Osu.UI
     /// </summary>
     public partial class PinchZoomHandler : CompositeDrawable
     {
-        private object? firstSource;
-        private object? secondSource;
+        private TouchSource? firstSource;
+        private TouchSource? secondSource;
 
         private Vector2 firstPos;
         private Vector2 secondPos;
