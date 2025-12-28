@@ -5,7 +5,10 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>osu.Android</RootNamespace>
     <AssemblyName>osu.Android</AssemblyName>
+    <!-- Versão dinâmica baseada na data/hora do build -->
+    <!-- Versão legível baseada na data/hora -->
     <Version>$([System.DateTime]::Now.ToString("yy.MM.dd.HHmm"))</Version>
+    <!-- VersionCode numérico incremental (para updates) -->
     <ApplicationVersion>$([System.DateTime]::Now.ToString("yyMMdd"))</ApplicationVersion>
     <ApplicationDisplayVersion Condition=" '$(ApplicationDisplayVersion)' == '' ">$(Version)</ApplicationDisplayVersion>
   </PropertyGroup>
