@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
     - name: Checkout repo
@@ -20,17 +22,51 @@ jobs:
       with:
         dotnet-version: '8.0.x' # ajuste conforme necessário
 
+    - name: Free up disk space
+      run: |
+        echo "Disk space before cleanup:"
+        df -h
+
+        # Remove unnecessary packages and clear package cache
+        sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' '^php.*' '^mongodb-.*' '^mysql-.*' azure-cli google-cloud-sdk hhvm google-chrome-stable firefox powershell mono-devel libgl1-mesa-dri
+        sudo apt-get autoremove -y
+        sudo apt-get clean
+
+        # Clear package manager cache
+        sudo rm -rf /var/lib/apt/lists/*
+
+        # Remove old .NET SDKs and caches
+        rm -rf ~/.dotnet
+        rm -rf ~/.nuget
+
+        echo "Disk space after cleanup:"
+        df -h
+
     - name: Install .NET Android workload
       run: |
         dotnet workload install android --include-previews || true
         dotnet workload restore || true
+
+        # Accept Android SDK licenses to avoid warnings
+        yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
 
     - name: Restore
       run: dotnet restore osu.Android.slnf
 
     - name: Build Release (Android)
       run: |
+        echo "Disk space before build:"
+        df -h
+
         dotnet build osu.Android.slnf -c Release -v minimal
+
+        echo "Disk space after build:"
+        df -h
+
+        # Clean up build artifacts to free space
+        rm -rf obj/
+        echo "Disk space after cleanup:"
+        df -h
 
     - name: Find produced APK(s)
       id: find_apks
@@ -104,8 +140,22 @@ jobs:
         body: Automated Android build (signed debug) from Actions.
         draft: false
         prerelease: true
-        files: |
-          **/signed/*.apk
-          **/*aligned.apk
+        artifacts: "**/signed/*.apk,**/*aligned.apk"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Final cleanup
+      if: always()
+      run: |
+        echo "Final disk space check:"
+        df -h
+
+        # Remove debug keystore and signing tools
+        rm -f debug.keystore uber-apk-signer.jar
+
+        # Remove any remaining build artifacts
+        find . -name "*.tmp" -type f -delete
+        find . -name "*.log" -type f -delete
+
+        echo "Final disk space after cleanup:"
+        df -h
