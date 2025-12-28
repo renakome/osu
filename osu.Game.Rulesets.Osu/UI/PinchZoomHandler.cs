@@ -30,9 +30,9 @@ namespace osu.Game.Rulesets.Osu.UI
         private Vector2 initialFocalScreen;
 
         // Configurable limits / thresholds.
-        // Aumentado para melhor experiência mobile como no osu!droid
-        private const float min_scale = 0.3f;
-        private const float max_scale = 4.0f;
+        // Com scaling automático via ModTouchDevice, limites mais conservadores
+        private const float min_scale = 0.8f;
+        private const float max_scale = 2.0f;
         private const float trigger_minimum_distance = 10f;
 
         /// <summary>
