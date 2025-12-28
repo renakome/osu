@@ -1,4 +1,6 @@
-using System;
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// See the LICENCE file in the repository root for full licence text.
+
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -28,9 +30,9 @@ namespace osu.Game.Rulesets.Osu.UI
 
         // Configurable limits / thresholds.
         // Aumentado para melhor experiência mobile como no osu!droid
-        private const float minScale = 0.3f;
-        private const float maxScale = 4.0f;
-        private const float triggerMinimumDistance = 10f;
+        private const float min_scale = 0.3f;
+        private const float max_scale = 4.0f;
+        private const float trigger_minimum_distance = 10f;
 
         /// <summary>
         /// Playfield reference used to convert between screen and gamefield coordinates.
@@ -110,7 +112,7 @@ namespace osu.Game.Rulesets.Osu.UI
         {
             initialDistance = Vector2.Distance(firstPos, secondPos);
 
-            if (initialDistance <= triggerMinimumDistance)
+            if (initialDistance <= trigger_minimum_distance)
             {
                 initialDistance = 0;
                 return;
@@ -127,10 +129,10 @@ namespace osu.Game.Rulesets.Osu.UI
             if (!isPinching) return;
 
             float currentDistance = Vector2.Distance(firstPos, secondPos);
-            if (currentDistance <= triggerMinimumDistance) return;
+            if (currentDistance <= trigger_minimum_distance) return;
 
             float zoomFactor = currentDistance / initialDistance;
-            float target = Math.Clamp(initialScale * zoomFactor, minScale, maxScale);
+            float target = Math.Clamp(initialScale * zoomFactor, min_scale, max_scale);
 
             // Convert focal screen -> gamefield before scale
             Vector2 worldBefore = playfield != null ? playfield.ScreenSpaceToGamefield(initialFocalScreen) : Vector2.Zero;
