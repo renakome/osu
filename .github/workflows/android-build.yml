@@ -40,15 +40,35 @@ jobs:
       id: find_apks
       shell: pwsh
       run: |
-        $apks = Get-ChildItem -Path "*/bin/Release/*/*.apk" -Recurse -File -ErrorAction SilentlyContinue
+        # Try multiple possible APK locations
+        $apkPatterns = @(
+          "*/bin/Release/**/*.apk",
+          "**/bin/Release/**/*.apk",
+          "**/*.apk"
+        )
+
+        $apks = @()
+        foreach ($pattern in $apkPatterns) {
+          $found = Get-ChildItem -Path $pattern -Recurse -File -ErrorAction SilentlyContinue
+          if ($found) {
+            $apks += $found
+          }
+        }
+
         if (-not $apks) {
-          Write-Host "No APKs found in bin/Release. Listing directory structure for debug:"
-          Get-ChildItem -Recurse -Directory | Where-Object { $_.FullName -like "*bin*" } | Select-Object -First 10
+          Write-Host "No APKs found. Listing all directories with 'Release' in path for debug:"
+          Get-ChildItem -Recurse -Directory | Where-Object { $_.FullName -like "*Release*" } | Select-Object -First 10
+
+          Write-Host "Listing all APK files in workspace:"
+          Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 10
+
           exit 1
         }
-        $apkPaths = $apks | ForEach-Object { $_.FullName }
+
+        $apkPaths = $apks | Select-Object -ExpandProperty FullName | Sort-Object -Unique
         Write-Host "Found APKs:"
         $apkPaths | ForEach-Object { Write-Host $_ }
+
         "apk_files<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         $apkPaths | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -90,15 +110,31 @@ jobs:
       id: collect_signed
       shell: pwsh
       run: |
-        $signed = Get-ChildItem -Path "*aligned.apk", "*/signed/*.apk" -Recurse -File -ErrorAction SilentlyContinue
+        # Look for signed APKs (aligned.apk files created by uber-apk-signer)
+        $signedPatterns = @(
+          "**/*aligned.apk",
+          "**/*signed.apk",
+          "**/signed/**/*.apk"
+        )
+
+        $signed = @()
+        foreach ($pattern in $signedPatterns) {
+          $found = Get-ChildItem -Path $pattern -Recurse -File -ErrorAction SilentlyContinue
+          if ($found) {
+            $signed += $found
+          }
+        }
+
         if (-not $signed) {
-          Write-Host "No signed APKs found. Listing files for debug:"
-          Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 10
+          Write-Host "No signed APKs found. Listing all APK files for debug:"
+          Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 20
           exit 1
         }
-        $signedPaths = $signed | ForEach-Object { $_.FullName }
+
+        $signedPaths = $signed | Select-Object -ExpandProperty FullName | Sort-Object -Unique
         Write-Host "Found signed APKs:"
         $signedPaths | ForEach-Object { Write-Host $_ }
+
         "signed_apks<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         $signedPaths | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
