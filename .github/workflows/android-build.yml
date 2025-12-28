@@ -40,40 +40,34 @@ jobs:
       id: find_apks
       shell: pwsh
       run: |
-        # Try multiple possible APK locations
-        $apkPatterns = @(
-          "**/bin/Release/**/*.apk",
-          "**/bin/**/*.apk"
-        )
+        Write-Host "Searching for APK files..."
 
-        $apks = @()
-        foreach ($pattern in $apkPatterns) {
-          try {
-            $found = Get-ChildItem -Path $pattern -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -eq '.apk' }
-            if ($found -and $found.Count -gt 0) {
-              $apks += $found
-              Write-Host "Found $($found.Count) APK(s) with pattern '$pattern'"
-            }
-          } catch {
-            Write-Host "Error with pattern '$pattern': $_"
-          }
-        }
+        # First, find all APK files in the workspace
+        $allApks = Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue
 
-        # Remove duplicates and filter to actual APK files
-        $apks = $apks | Sort-Object -Property FullName -Unique | Where-Object { $_.Extension -eq '.apk' }
-
-        if (-not $apks -or $apks.Count -eq 0) {
-          Write-Host "No APKs found. Listing all directories with 'Release' in path for debug:"
-          Get-ChildItem -Recurse -Directory | Where-Object { $_.FullName -like "*Release*" } | Select-Object -First 10
-
-          Write-Host "Listing all APK files in workspace:"
-          Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 20
-
+        if (-not $allApks -or $allApks.Count -eq 0) {
+          Write-Host "No APK files found anywhere in workspace"
           exit 1
         }
 
-        $apkPaths = $apks | Select-Object -ExpandProperty FullName
-        Write-Host "Found $($apks.Count) APK(s) total:"
+        Write-Host "Found $($allApks.Count) APK files total"
+
+        # Filter to only unsigned APKs (exclude already signed ones)
+        $unsignedApks = $allApks | Where-Object {
+          $_.Name -notlike "*-Signed.apk" -and
+          $_.Name -notlike "*aligned.apk" -and
+          $_.FullName -like "*bin*"  # Only from bin directories
+        }
+
+        if (-not $unsignedApks -or $unsignedApks.Count -eq 0) {
+          Write-Host "No unsigned APK files found in bin directories"
+          Write-Host "All found APKs:"
+          $allApks | ForEach-Object { Write-Host "  $($_.FullName)" }
+          exit 1
+        }
+
+        $apkPaths = $unsignedApks | Select-Object -ExpandProperty FullName | Sort-Object
+        Write-Host "Found $($unsignedApks.Count) unsigned APK(s) to sign:"
         $apkPaths | ForEach-Object { Write-Host "  $_" }
 
         "apk_files<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -117,37 +111,30 @@ jobs:
       id: collect_signed
       shell: pwsh
       run: |
-        # Look for signed APKs (aligned.apk files created by uber-apk-signer)
-        $signedPatterns = @(
-          "**/*aligned.apk",
-          "**/*-Signed.apk",
-          "**/signed/**/*.apk"
-        )
+        Write-Host "Looking for signed APK files..."
 
-        $signed = @()
-        foreach ($pattern in $signedPatterns) {
-          try {
-            $found = Get-ChildItem -Path $pattern -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -eq '.apk' }
-            if ($found -and $found.Count -gt 0) {
-              $signed += $found
-              Write-Host "Found $($found.Count) signed APK(s) with pattern '$pattern'"
-            }
-          } catch {
-            Write-Host "Error with pattern '$pattern': $_"
-          }
-        }
+        # Find all APK files
+        $allApks = Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue
 
-        # Remove duplicates and filter to actual APK files
-        $signed = $signed | Sort-Object -Property FullName -Unique | Where-Object { $_.Extension -eq '.apk' }
-
-        if (-not $signed -or $signed.Count -eq 0) {
-          Write-Host "No signed APKs found. Listing all APK files for debug:"
-          Get-ChildItem -Path "*.apk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 20
+        if (-not $allApks -or $allApks.Count -eq 0) {
+          Write-Host "No APK files found at all"
           exit 1
         }
 
-        $signedPaths = $signed | Select-Object -ExpandProperty FullName
-        Write-Host "Found $($signed.Count) signed APK(s) total:"
+        # Filter to only signed APKs (aligned.apk or *-Signed.apk files)
+        $signedApks = $allApks | Where-Object {
+          $_.Name -like "*aligned.apk" -or $_.Name -like "*-Signed.apk"
+        }
+
+        if (-not $signedApks -or $signedApks.Count -eq 0) {
+          Write-Host "No signed APK files found"
+          Write-Host "All found APKs:"
+          $allApks | ForEach-Object { Write-Host "  $($_.Name)" }
+          exit 1
+        }
+
+        $signedPaths = $signedApks | Select-Object -ExpandProperty FullName | Sort-Object
+        Write-Host "Found $($signedApks.Count) signed APK(s):"
         $signedPaths | ForEach-Object { Write-Host "  $_" }
 
         "signed_apks<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
