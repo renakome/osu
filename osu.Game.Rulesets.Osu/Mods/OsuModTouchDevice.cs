@@ -1,7 +1,6 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
 using System.Linq;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -22,6 +21,15 @@ namespace osu.Game.Rulesets.Osu.Mods
 
         // Mod sempre válido para submissão em dispositivos móveis (como no osu!droid)
         public override bool Ranked => true;
+
+        /// <summary>
+        /// ModTouchDevice para dispositivos móveis - apenas ativa pinch-to-zoom.
+        /// Não modifica a dificuldade do beatmap para preservar o ranking correto.
+        /// </summary>
+        /// <remarks>
+        /// O scaling visual pode ser implementado de outras formas no futuro
+        /// sem afetar as estatísticas de dificuldade.
+        /// </remarks>
 
         /// <summary>
         /// When this mod is applied to a drawable ruleset, attach the pinch-to-zoom handler to the playfield adjustment container.
