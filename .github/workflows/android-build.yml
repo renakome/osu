@@ -66,14 +66,38 @@ jobs:
 
         "apk_path=$($apkPaths[0])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Create GitHub Release and upload APK
+    - name: Prepare debug keystore
+      run: |
+        # Generate debug keystore for signing
+        keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+
+    - name: Download uber-apk-signer
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.2.1/uber-apk-signer-1.2.1.jar" -OutFile "uber-apk-signer.jar"
+
+    - name: Sign APK with debug key
+      shell: pwsh
+      run: |
+        $apkPath = "${{ steps.find_apks.outputs.apk_path }}"
+        Write-Host "Signing APK with debug keystore: $apkPath"
+        & java -jar uber-apk-signer.jar --apks "$apkPath" --ks debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --allowResign
+
+    - name: Find signed APK
+      id: find_signed
+      shell: pwsh
+      run: |
+        $signedPath = "${{ steps.find_apks.outputs.apk_path }}".Replace(".apk", "-Signed.apk")
+        Write-Host "Signed APK location: $signedPath"
+        "signed_path=$signedPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Create GitHub Release and upload signed APK
       uses: ncipollo/release-action@v1
       with:
         tag: android-build-${{ github.run_number }}-r${{ github.run_id }}
         name: Android build ${{ github.run_number }} (run ${{ github.run_id }})
-        body: Automated Android build from Actions.
+        body: Automated Android build (signed debug APK) from Actions.
         draft: false
         prerelease: true
-        artifacts: ${{ steps.find_apks.outputs.apk_path }}
+        artifacts: ${{ steps.find_signed.outputs.signed_path }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
