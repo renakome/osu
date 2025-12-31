@@ -11,8 +11,8 @@ namespace osu.Game.Online
         {
             // Configure para conectar ao servidor osudroid-rx via ngrok
             WebsiteUrl = APIUrl = @"https://ornamentally-bibliophilistic-willard.ngrok-free.dev"; // URL do servidor ngrok
-            APIClientSecret = Environment.GetEnvironmentVariable("API_CLIENT_SECRET") ?? ""; // Secret do servidor osudroid-rx
-            APIClientID = Environment.GetEnvironmentVariable("API_CLIENT_ID") ?? ""; // ID do cliente para osudroid
+            APIClientSecret = Environment.GetEnvironmentVariable("API_CLIENT_SECRET") ?? "01ny55u3n0ooztzqzqr88dtf1"; // Secret do servidor osudroid-rx
+            APIClientID = Environment.GetEnvironmentVariable("API_CLIENT_ID") ?? "6878874068"; // ID do cliente para osudroid
 
             // Endpoints do osudroid (SignalR/WebSocket)
             SpectatorUrl = @"https://ornamentally-bibliophilistic-willard.ngrok-free.dev/spectator";
