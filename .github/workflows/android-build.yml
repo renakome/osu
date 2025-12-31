@@ -2,7 +2,9 @@ name: Build Android (signed debug) and Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -11,6 +13,8 @@ jobs:
     timeout-minutes: 60
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      API_CLIENT_ID: ${{ secrets.API_CLIENT_ID }}
+      API_CLIENT_SECRET: ${{ secrets.API_CLIENT_SECRET }}
 
     steps:
     - name: Checkout repo
@@ -30,11 +34,52 @@ jobs:
     - name: Install .NET Android workload
       run: dotnet workload install android
 
+    - name: Verify API credentials
+      shell: pwsh
+      run: |
+        $clientId = $env:API_CLIENT_ID
+        $clientSecret = $env:API_CLIENT_SECRET
+
+        if ($clientId) {
+          Write-Host "API_CLIENT_ID: $($clientId.Substring(0, [Math]::Min(3, $clientId.Length)))***"
+        } else {
+          Write-Host "API_CLIENT_ID: not set"
+        }
+
+        if ($clientSecret) {
+          Write-Host "API_CLIENT_SECRET: $($clientSecret.Substring(0, [Math]::Min(3, $clientSecret.Length)))***"
+        } else {
+          Write-Host "API_CLIENT_SECRET: not set"
+        }
+
+        if (-not $clientId -or -not $clientSecret) {
+          Write-Host "❌ API credentials not set!"
+          exit 1
+        } else {
+          Write-Host "✅ API credentials configured"
+        }
+
     - name: Restore
       run: dotnet restore osu.Android\osu.Android.csproj
 
+    - name: Verify build environment
+      shell: pwsh
+      run: |
+        $clientId = $env:API_CLIENT_ID
+        $clientSecret = $env:API_CLIENT_SECRET
+
+        if ($clientId) {
+          Write-Host "Build API_CLIENT_ID: $($clientId.Substring(0, [Math]::Min(3, $clientId.Length)))***"
+        }
+        if ($clientSecret) {
+          Write-Host "Build API_CLIENT_SECRET: $($clientSecret.Substring(0, [Math]::Min(3, $clientSecret.Length)))***"
+        }
+
     - name: Build Release (Android)
       run: dotnet build osu.Android\osu.Android.csproj -c Release
+      env:
+        API_CLIENT_ID: ${{ secrets.API_CLIENT_ID }}
+        API_CLIENT_SECRET: ${{ secrets.API_CLIENT_SECRET }}
 
     - name: Find main APK
       id: find_apks
@@ -66,21 +111,57 @@ jobs:
 
         "apk_path=$($apkPaths[0])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Prepare debug keystore
+    - name: Prepare keystore
+      shell: pwsh
       run: |
-        # Generate debug keystore for signing
-        keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+        # Try to use release keystore from secrets first
+        $keystoreB64 = "${{ secrets.KEYSTORE_BASE64 }}"
+        if ($keystoreB64) {
+          Write-Host "Using release keystore from secrets"
+          $keystoreB64 | Out-File -FilePath "release.b64" -Encoding ASCII
+          certutil -decode "release.b64" "release.keystore"
+
+          # Create keystore.properties for uber-apk-signer
+          "storeFile=release.keystore" | Out-File -FilePath "keystore.properties" -Encoding ASCII
+          "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" | Out-File -FilePath "keystore.properties" -Append -Encoding ASCII
+          "keyAlias=${{ secrets.KEY_ALIAS }}" | Out-File -FilePath "keystore.properties" -Append -Encoding ASCII
+          "keyPassword=${{ secrets.KEY_PASSWORD }}" | Out-File -FilePath "keystore.properties" -Append -Encoding ASCII
+          Write-Host "Release keystore configured"
+        } else {
+          Write-Host "No release keystore found, using debug keystore"
+          # Generate debug keystore for signing
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+
+          # Create keystore.properties for debug
+          "storeFile=debug.keystore" | Out-File -FilePath "keystore.properties" -Encoding ASCII
+          "storePassword=android" | Out-File -FilePath "keystore.properties" -Append -Encoding ASCII
+          "keyAlias=androiddebugkey" | Out-File -FilePath "keystore.properties" -Append -Encoding ASCII
+          "keyPassword=android" | Out-File -FilePath "keystore.properties" -Append -Encoding ASCII
+          Write-Host "Debug keystore configured"
+        }
 
     - name: Download uber-apk-signer
+      shell: pwsh
       run: |
         Invoke-WebRequest -Uri "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.2.1/uber-apk-signer-1.2.1.jar" -OutFile "uber-apk-signer.jar"
 
-    - name: Sign APK with debug key
+    - name: Sign APK
       shell: pwsh
       run: |
         $apkPath = "${{ steps.find_apks.outputs.apk_path }}"
-        Write-Host "Signing APK with debug keystore: $apkPath"
-        & java -jar uber-apk-signer.jar --apks "$apkPath" --ks debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --allowResign
+        Write-Host "Signing APK: $apkPath"
+
+        # Read keystore config
+        $keystoreConfig = Get-Content "keystore.properties"
+        $storeFile = ($keystoreConfig | Where-Object { $_ -match "storeFile=" }) -replace "storeFile=", ""
+        $storePass = ($keystoreConfig | Where-Object { $_ -match "storePassword=" }) -replace "storePassword=", ""
+        $keyAlias = ($keystoreConfig | Where-Object { $_ -match "keyAlias=" }) -replace "keyAlias=", ""
+        $keyPass = ($keystoreConfig | Where-Object { $_ -match "keyPassword=" }) -replace "keyPassword=", ""
+
+        Write-Host "Using keystore: $storeFile"
+
+        # Sign the APK
+        & java -jar uber-apk-signer.jar --apks "$apkPath" --ks "$storeFile" --ks-key-alias "$keyAlias" --ks-pass "pass:$storePass" --key-pass "pass:$keyPass" --allowResign
 
     - name: Find signed APK
       id: find_signed
@@ -90,14 +171,24 @@ jobs:
         Write-Host "Signed APK location: $signedPath"
         "signed_path=$signedPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-    - name: Create GitHub Release and upload signed APK
-      uses: ncipollo/release-action@v1
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
       with:
-        tag: android-build-${{ github.run_number }}-r${{ github.run_id }}
-        name: Android build ${{ github.run_number }} (run ${{ github.run_id }})
-        body: Automated Android build (signed debug APK) from Actions.
-        draft: false
-        prerelease: true
-        artifacts: ${{ steps.find_signed.outputs.signed_path }}
+        tag_name: android-build-${{ github.run_number }}
+        name: Android build ${{ github.run_number }}
+        body: |
+          Automated Android build for osu! lazer with custom server support.
+
+          **Build Details:**
+          - Commit: ${{ github.sha }}
+          - Branch: ${{ github.ref }}
+          - Run: ${{ github.run_id }}
+
+          This build includes custom server configuration for osu!droid-rx compatibility.
+        draft: true
+        prerelease: false
+        files: |
+          ${{ steps.find_signed.outputs.signed_path }}
+        fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
